@@ -1,4 +1,5 @@
 import { JsonRpcProvider, Contract } from "ethers"
+import fetch from "node-fetch"
 
 export interface NFT {
   tokenId: string
@@ -14,7 +15,7 @@ const NFT_CONTRACT_ADDRESSES = [
   "0xadede2a59b46ef9815e349464ea14d40195d4a2b",
 ]
 
-const ALCHEMY_API_KEY = "EUcDd77cHlUHCqZedbKpI"
+const ALCHEMY_API_KEY = process.env.ALCHEMY_API_KEY || "EUcDd77cHlUHCqZedbKpI"
 const provider = new JsonRpcProvider(`https://shape-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}`)
 
 const ERC721_ABI = [

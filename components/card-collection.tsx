@@ -246,9 +246,9 @@ export function CardCollection({ onCardSelect, selectedCard, onCardDeleted }: Ca
   }
 
   return (
-    <div className="space-y-6">
+    <div className="h-full max-h-[600px] overflow-y-auto space-y-6 pr-2">
       {/* Header with view toggle */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between sticky top-0 bg-background z-10 pb-4">
         <div>
           <div className="flex items-center gap-4 mb-2">
             <Button
@@ -405,7 +405,7 @@ export function CardCollection({ onCardSelect, selectedCard, onCardDeleted }: Ca
         <>
           {/* Action buttons for selected cards */}
           {selectedCards.size > 0 && (
-            <div className="flex items-center gap-4 p-4 bg-muted rounded-lg">
+            <div className="sticky top-16 bg-background z-10 flex items-center gap-4 p-4 bg-muted rounded-lg">
               <span className="text-sm font-medium">{selectedCards.size} card(s) selected</span>
               <div className="flex gap-2">
                 <Button
@@ -506,7 +506,7 @@ export function CardCollection({ onCardSelect, selectedCard, onCardDeleted }: Ca
 
           {/* Cards Display */}
           {viewMode === "grid" ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pb-4">
               {filteredCards.map((card) => (
                 <div key={card.id} className="relative group">
                   <PlayingCardComponent
@@ -551,7 +551,7 @@ export function CardCollection({ onCardSelect, selectedCard, onCardDeleted }: Ca
               ))}
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-4 pb-4">
               {filteredCards.map((card) => (
                 <Card
                   key={card.id}
