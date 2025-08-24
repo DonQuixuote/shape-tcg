@@ -1,16 +1,14 @@
 import { ethers } from "ethers"
 import type { PlayingCard } from "./card-generation"
 
-// Contract ABI (simplified for key functions)
 const CARD_CONTRACT_ABI = [
-  "function mintCard(address to, string tokenURI, uint8 power, uint8 health, uint8 defense, string skill, string rarity, string grade, address originalNFTContract, uint256 originalTokenId) returns (uint256)",
+  "function mint(address to, string name, string grade, uint8 power, uint8 health, uint8 defense, string skill, bool isHolographic) returns (uint256)",
   "function isNFTUsed(address nftContract, uint256 tokenId) view returns (bool)",
-  "function getCardStats(uint256 tokenId) view returns (tuple(uint8 power, uint8 health, uint8 defense, string skill, string rarity, string grade, address originalNFTContract, uint256 originalTokenId))",
-  "event CardMinted(uint256 indexed tokenId, address indexed owner, address originalNFTContract, uint256 originalTokenId, string rarity)",
+  "function tokenURI(uint256 tokenId) view returns (string)",
+  "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)",
 ]
 
-// Contract address (to be deployed)
-const CARD_CONTRACT_ADDRESS = "0x0000000000000000000000000000000000000000" // Replace with actual deployed address
+const CARD_CONTRACT_ADDRESS = "0x0000000000000000000000000000000000000000" // Replace with actual ShapeTCG contract address
 
 export interface MintCardParams {
   card: PlayingCard
@@ -31,24 +29,15 @@ export async function mintCardOnChain(params: MintCardParams): Promise<string> {
 
     console.log("[v0] Minting card on-chain...", params)
 
-    // Check if NFT is already used
-    const isUsed = await contract.isNFTUsed(params.originalNFTContract, params.originalTokenId)
-    if (isUsed) {
-      throw new Error("This NFT has already been used to mint a card")
-    }
-
-    // Mint the card
-    const tx = await contract.mintCard(
+    const tx = await contract.mint(
       await signer.getAddress(),
-      params.metadataURI,
+      params.card.name,
+      params.card.grade,
       params.card.power,
       params.card.health,
       params.card.defense,
       params.card.skill || "",
-      params.card.processedImage?.backgroundRarity || "common",
-      params.card.grade,
-      params.originalNFTContract,
-      params.originalTokenId,
+      params.card.holographic || false,
     )
 
     console.log("[v0] Transaction sent:", tx.hash)
@@ -56,18 +45,17 @@ export async function mintCardOnChain(params: MintCardParams): Promise<string> {
     const receipt = await tx.wait()
     console.log("[v0] Card minted successfully:", receipt)
 
-    // Extract token ID from events
-    const mintEvent = receipt.logs.find((log: any) => {
+    const transferEvent = receipt.logs.find((log: any) => {
       try {
         const parsed = contract.interface.parseLog(log)
-        return parsed?.name === "CardMinted"
+        return parsed?.name === "Transfer"
       } catch {
         return false
       }
     })
 
-    if (mintEvent) {
-      const parsed = contract.interface.parseLog(mintEvent)
+    if (transferEvent) {
+      const parsed = contract.interface.parseLog(transferEvent)
       return parsed?.args.tokenId.toString()
     }
 
@@ -78,35 +66,18 @@ export async function mintCardOnChain(params: MintCardParams): Promise<string> {
   }
 }
 
-export async function checkNFTUsage(nftContract: string, tokenId: string): Promise<boolean> {
-  try {
-    if (!window.ethereum) {
-      return false
-    }
-
-    const provider = new ethers.BrowserProvider(window.ethereum)
-    const contract = new ethers.Contract(CARD_CONTRACT_ADDRESS, CARD_CONTRACT_ABI, provider)
-
-    return await contract.isNFTUsed(nftContract, tokenId)
-  } catch (error) {
-    console.error("[v0] Error checking NFT usage:", error)
-    return false
-  }
-}
-
 export async function uploadCardMetadata(card: PlayingCard): Promise<string> {
-  // This would typically upload to IPFS or another decentralized storage
-  // For now, we'll create a data URI with the card metadata
   const metadata = {
     name: card.name,
-    description: `A ShapeTCG card generated from ${card.name}`,
+    description: `A ShapeTCG card: ${card.name}`,
     image: card.processedImage?.processedImageUrl || card.image,
     attributes: [
+      { trait_type: "Rank", value: card.grade },
+      { trait_type: "Rarity", value: card.processedImage?.backgroundRarity || "common" },
       { trait_type: "Power", value: card.power },
       { trait_type: "Health", value: card.health },
       { trait_type: "Defense", value: card.defense },
-      { trait_type: "Grade", value: card.grade },
-      { trait_type: "Rarity", value: card.processedImage?.backgroundRarity || "common" },
+      { trait_type: "Holographic", value: card.holographic ? "Yes" : "No" },
       { trait_type: "Skill", value: card.skill || "No skill assigned" },
     ],
   }

@@ -1,4 +1,3 @@
-import { ChatInterface } from "@/components/chat-interface"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { ArrowLeft, Settings, HelpCircle } from "lucide-react"
@@ -41,9 +40,9 @@ export default function PlayPage() {
 
       {/* Main Play Area */}
       <div className="container mx-auto px-4 py-6 h-[calc(100vh-80px)]">
-        <div className="grid lg:grid-cols-3 gap-6 h-full">
+        <div className="h-full">
           {/* Game Area */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="space-y-6 h-full">
             <Card className="p-6 h-full bg-gradient-to-br from-card to-card/50 border-border/50">
               <div className="flex flex-col h-full">
                 <div className="flex items-center justify-between mb-6">
@@ -58,12 +57,6 @@ export default function PlayPage() {
                 </div>
               </div>
             </Card>
-          </div>
-
-          {/* Right Sidebar */}
-          <div className="lg:col-span-1 space-y-6">
-            {/* AI Chat Interface */}
-            <ChatInterface />
           </div>
         </div>
       </div>

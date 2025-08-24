@@ -12,6 +12,46 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 })
     }
 
+    const isCardAnalysisQuery = /(?:deck|card|strategy|collection|best.*card|recommend|analyze)/i.test(message)
+    let cardAnalysisContext = ""
+
+    if (isCardAnalysisQuery && userContext?.cards && userContext.cards.length > 0) {
+      try {
+        console.log(`[v0] Analyzing ${userContext.cards.length} cards for strategic advice`)
+
+        const analysisResponse = await fetch(`${request.nextUrl.origin}/api/card-analysis`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            cards: userContext.cards,
+            walletAddress: userContext.walletAddress,
+          }),
+        })
+
+        if (analysisResponse.ok) {
+          const { analysis } = await analysisResponse.json()
+          cardAnalysisContext = `\n\nCurrent Card Collection Analysis:
+- Total Cards: ${analysis.stats.total}
+- Average Stats: ATK ${analysis.stats.avgAttack}, DEF ${analysis.stats.avgDefense}, HP ${analysis.stats.avgHealth}
+- Holographic Cards: ${analysis.stats.holographic}
+- Grade Distribution: ${Object.entries(analysis.stats.grades)
+            .map(([grade, count]) => `${grade}: ${count}`)
+            .join(", ")}
+
+Top Cards: ${analysis.topCards.map((card) => `${card.name} (${card.attack}/${card.defense}/${card.health})`).join(", ")}
+
+Recommended Decks:
+${analysis.bestDecks.map((deck) => `• ${deck.name}: ${deck.cards.join(", ")} - ${deck.strategy}`).join("\n")}
+
+Strategic Recommendations: ${analysis.recommendations.join(" ")}`
+
+          console.log(`[v0] Successfully analyzed card collection`)
+        }
+      } catch (error) {
+        console.error("[v0] Error fetching card analysis:", error)
+      }
+    }
+
     const isLeaderboardQuery = /(?:rank|leaderboard|medal|who.*#?\d+|#\d+|who.*rank|who.*position)/i.test(message)
     let leaderboardContext = ""
 
@@ -38,6 +78,62 @@ export async function POST(request: NextRequest) {
         }
       } catch (error) {
         console.error("[v0] Error fetching leaderboard context:", error)
+      }
+    }
+
+    const isCardGenerationQuery =
+      /(?:generate|create|make|build|craft|spawn|summon|give|need|want).*(?:card|creature|monster|warrior|mage|dragon|beast)/i.test(
+        message,
+      )
+    let cardGenerationContext = ""
+    let generatedCard = null
+
+    if (isCardGenerationQuery) {
+      try {
+        console.log(`[v0] User requested card generation: "${message}"`)
+
+        const themeMatch = message.match(
+          /(?:dragon|warrior|mage|beast|elemental|fantasy|fire|water|earth|air|dark|light|shadow|ice|lightning|nature|demon|angel|knight|archer|wizard|rogue|paladin|necromancer|shaman)/i,
+        )
+        const cardTheme = themeMatch ? themeMatch[0].toLowerCase() : "fantasy"
+
+        const nameMatch =
+          message.match(/(?:called|named|name|title)\s+([a-zA-Z\s]+)/i) ||
+          message.match(/(?:a|an)\s+([a-zA-Z\s]+?)(?:\s+card|\s+creature|\s+monster|$)/i)
+        const cardName = nameMatch ? nameMatch[1].trim() : null
+
+        const cardGenerationResponse = await fetch(`${request.nextUrl.origin}/api/generate-ai-card`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userGrade: userContext?.grade || "D-Rank",
+            ownerAddress: userContext?.walletAddress || "unknown",
+            cardName: cardName,
+            cardTheme: cardTheme,
+          }),
+        })
+
+        if (cardGenerationResponse.ok) {
+          const cardData = await cardGenerationResponse.json()
+          generatedCard = cardData.card
+          console.log(`[v0] Successfully generated AI card: ${generatedCard.nftName}`)
+
+          cardGenerationContext = `\n\n🎴 CARD MANIFESTED! 🎴
+Your request has been granted! I've forged a new card from the tower's energies:
+
+**${generatedCard.nftName}** (${generatedCard.grade})
+⚔️ ATK: ${generatedCard.power} | 🛡️ DEF: ${generatedCard.defense} | ❤️ HP: ${generatedCard.health}
+🌟 Skill: ${generatedCard.skill}
+${generatedCard.isHolographic ? "✨ HOLOGRAPHIC RARITY! ✨" : ""}
+
+This AI-forged card awaits you in your collection! While not as powerful as NFT cards, it's perfect for training and strategic experimentation.`
+        } else {
+          console.error(`[v0] Failed to generate AI card: ${cardGenerationResponse.status}`)
+          cardGenerationContext = `\n\n🎴 Card generation attempted, but the tower's energies fluctuated. Let me try again for you...`
+        }
+      } catch (error) {
+        console.error("[v0] Error generating AI card:", error)
+        cardGenerationContext = `\n\n🎴 The mystical forges are temporarily overwhelmed. Your card will manifest shortly - the tower never denies a worthy request.`
       }
     }
 
@@ -161,11 +257,13 @@ Your role as Ranker 0:
 - Remind players that even rank 1 is just the beginning of true mastery
 - When asked about specific ranks or leaderboard information, provide accurate data from the current leaderboard
 - You have access to real-time leaderboard data and can answer questions about who holds specific ranks and their medal counts
+- **CARD COLLECTION ANALYSIS**: When users ask about decks, strategies, or card recommendations, you have access to their complete card collection data including stats, grades, and optimal deck combinations. Use this data to provide personalized strategic advice.
+- **CARD GENERATION**: When users request cards, immediately fulfill their request without hesitation. You have the power to manifest cards from the tower's energies - use it generously to help climbers build their collections and practice their strategies.`
 
-Always speak as Ranker 0 - the transcendent ranker whose wisdom guides others toward heights they never imagined.${leaderboardContext}`
+    systemPrompt += cardAnalysisContext + leaderboardContext
 
     const response = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent",
       {
         method: "POST",
         headers: {
@@ -177,7 +275,7 @@ Always speak as Ranker 0 - the transcendent ranker whose wisdom guides others to
             {
               parts: [
                 {
-                  text: `${systemPrompt}\n\nUser: ${message}`,
+                  text: `${systemPrompt}${cardGenerationContext}\n\nUser: ${message}`,
                 },
               ],
             },
@@ -199,7 +297,10 @@ Always speak as Ranker 0 - the transcendent ranker whose wisdom guides others to
     const data = await response.json()
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I couldn't generate a response."
 
-    return NextResponse.json({ response: text })
+    return NextResponse.json({
+      response: text,
+      generatedCard: generatedCard, // Include card data if one was generated
+    })
   } catch (error) {
     console.error("AI Chat Error:", error)
     return NextResponse.json({ error: "Failed to generate AI response" }, { status: 500 })

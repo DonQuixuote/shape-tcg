@@ -27,32 +27,47 @@ export async function getRandomOpponent(): Promise<string> {
 
 export async function generateAIOpponentCards(opponentName: string, maxCards = 3): Promise<PlayingCard[]> {
   try {
-    // Use Alchemy API to get random NFTs from our contracts
-    const contractAddresses = [
-      "0xdad1276ecd6d27116da400b33c81ce49d91d5831",
-      "0xf2e4b2a15872a20d0ffb336a89b94ba782ce9ba5",
-      "0xadede2a59b46ef9815e349464ea14d40195d4a2b",
-      "0x72fe3c398c9a030b9b2be1fe1ff07701167571d4",
-      "0xba86baef2396e39d880bb4b4b751b99956ab9351",
-    ]
-
     const cards: PlayingCard[] = []
 
-    // Generate exactly maxCards (3) cards using random NFTs from contracts
     for (let i = 0; i < maxCards; i++) {
       try {
-        // Pick a random contract
-        const randomContract = contractAddresses[Math.floor(Math.random() * contractAddresses.length)]
+        // Generate random creature types for variety
+        const creatureTypes = [
+          "dragon",
+          "phoenix",
+          "griffin",
+          "unicorn",
+          "wolf",
+          "tiger",
+          "bear",
+          "eagle",
+          "lion",
+          "panther",
+          "fox",
+          "owl",
+          "shark",
+          "whale",
+          "octopus",
+          "spider",
+          "scorpion",
+          "snake",
+          "turtle",
+          "frog",
+          "butterfly",
+          "bee",
+          "ant",
+          "beetle",
+        ]
 
-        // Generate random token ID (most NFT collections have tokens in 1-10000 range)
-        const randomTokenId = Math.floor(Math.random() * 10000) + 1
+        const randomCreature = creatureTypes[Math.floor(Math.random() * creatureTypes.length)]
+        const cardNumber = i + 1
 
         const nftData: NFTData = {
-          tokenId: randomTokenId.toString(),
-          contractAddress: randomContract,
-          name: `${opponentName}'s NFT #${randomTokenId}`,
-          // Use shapescan to get NFT image
-          image: `https://shapescan.xyz/nft/${randomContract}/${randomTokenId}/image`,
+          tokenId: `ai-${i}`,
+          contractAddress: "0x0000000000000000000000000000000000000000", // AI generated, no real contract
+          name: `${opponentName}'s ${randomCreature.charAt(0).toUpperCase() + randomCreature.slice(1)} #${cardNumber}`,
+          // Use AI image generation for cartoon creatures
+          image: `/placeholder.svg?height=300&width=300&query=cartoon ${randomCreature} warrior fantasy creature colorful`,
         }
 
         // Generate card with random grade for AI opponent
@@ -63,7 +78,7 @@ export async function generateAIOpponentCards(opponentName: string, maxCards = 3
         cards.push(card)
       } catch (error) {
         console.error(`Error generating AI card ${i}:`, error)
-        // Fallback to mock card if NFT generation fails
+        // Fallback to mock card if generation fails
         const mockCard = generateMockCard(opponentName, i)
         cards.push(mockCard)
       }
@@ -77,19 +92,22 @@ export async function generateAIOpponentCards(opponentName: string, maxCards = 3
 }
 
 function generateMockCard(opponentName: string, index: number): PlayingCard {
+  const creatureTypes = ["dragon", "phoenix", "griffin", "unicorn", "wolf", "tiger", "bear", "eagle"]
+  const randomCreature = creatureTypes[index % creatureTypes.length]
+
   return {
     id: `ai-${opponentName}-${index}`,
     nftData: {
       tokenId: `mock-${index}`,
       contractAddress: "0x0000000000000000000000000000000000000000",
-      name: `${opponentName}'s Champion #${index + 1}`,
-      image: `/placeholder.svg?height=300&width=300&query=fantasy warrior ${index + 1}`,
+      name: `${opponentName}'s ${randomCreature.charAt(0).toUpperCase() + randomCreature.slice(1)} Champion`,
+      image: `/placeholder.svg?height=300&width=300&query=cartoon ${randomCreature} warrior fantasy creature colorful`,
     },
     owner: "ai-opponent",
     power: Math.floor(Math.random() * 11), // 0-10 ATK range
     health: Math.floor(Math.random() * 30) + 1, // 1-30 HP range
     defense: Math.floor(Math.random() * 11), // 0-10 DEF range
-    skill: `${opponentName}'s special ability that enhances combat effectiveness`,
+    skill: `${randomCreature.charAt(0).toUpperCase() + randomCreature.slice(1)} fury: Unleashes primal power in battle`,
     rarity: ["Common", "Rare", "Epic", "Legendary"][Math.floor(Math.random() * 4)] as any,
     isHolographic: Math.random() < 0.1,
     createdAt: new Date().toISOString(),

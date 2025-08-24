@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useWeb3 } from "@/contexts/web3-context"
 import { fetchUserNFTs, type NFT } from "@/lib/nft-utils"
-import { Loader2, CheckCircle, Sparkles, CopyleftIcon as Collection, Sword } from "lucide-react"
+import { Loader2, CheckCircle, Sparkles, CopyleftIcon as Collection, Sword, Bot } from "lucide-react"
 import Image from "next/image"
 import { generatePlayingCard, type PlayingCard, type NFTData } from "@/lib/card-generation"
 import { getUserInfoByAddress } from "@/lib/leaderboard"
@@ -13,6 +13,7 @@ import { getGradeByRank } from "@/lib/grade-system"
 import { saveCard, getCardsByOwner, getUsedNFTs } from "@/lib/card-storage"
 import { CardCollection as CardCollectionComponent } from "@/components/card-collection"
 import { BattleInterface } from "@/components/battle-interface"
+import { ChatInterface } from "@/components/chat-interface"
 
 export function NFTSelection() {
   const { account, isConnected } = useWeb3()
@@ -23,8 +24,7 @@ export function NFTSelection() {
   const [generatedCards, setGeneratedCards] = useState<PlayingCard[]>([])
   const [userGrade, setUserGrade] = useState<string>("Ungraded")
   const [isGeneratingCard, setIsGeneratingCard] = useState(false)
-  const [viewMode, setViewMode] = useState<"nfts" | "cards">("nfts")
-  const [showBattle, setShowBattle] = useState(false)
+  const [viewMode, setViewMode] = useState<"nfts" | "cards" | "battle" | "assistant">("nfts")
 
   useEffect(() => {
     if (isConnected && account) {
@@ -155,12 +155,24 @@ export function NFTSelection() {
                 <Collection className="h-4 w-4 mr-2" />
                 View Collection ({generatedCards.length})
               </Button>
+              <Button variant="outline" size="sm" onClick={() => setViewMode("battle")}>
+                <Sword className="h-4 w-4 mr-2" />
+                Battle
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setViewMode("assistant")}>
+                <Bot className="h-4 w-4 mr-2" />
+                Ranker 0
+              </Button>
             </div>
           </div>
         )}
 
         {viewMode === "cards" && generatedCards.length > 0 ? (
           <CardCollectionComponent onCardDeleted={loadStoredCards} />
+        ) : viewMode === "battle" && generatedCards.length > 0 ? (
+          <BattleInterface playerCards={generatedCards} onClose={() => setViewMode("cards")} />
+        ) : viewMode === "assistant" ? (
+          <ChatInterface />
         ) : (
           <div className="text-center space-y-4">
             <div className="w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center mx-auto">
@@ -194,7 +206,12 @@ export function NFTSelection() {
     )
   }
 
-  if (viewMode === "cards" || (generatedCards.length > 0 && viewMode !== "nfts")) {
+  if (
+    viewMode === "cards" ||
+    viewMode === "battle" ||
+    viewMode === "assistant" ||
+    (generatedCards.length > 0 && viewMode !== "nfts")
+  ) {
     return (
       <div className="space-y-4 relative">
         <div className="flex items-center justify-between">
@@ -206,22 +223,32 @@ export function NFTSelection() {
               <Collection className="h-4 w-4 mr-2" />
               View Collection ({generatedCards.length})
             </Button>
-          </div>
-          {generatedCards.length > 0 && (
             <Button
-              onClick={() => setShowBattle(true)}
+              variant={viewMode === "battle" ? "outline" : "ghost"}
               size="sm"
-              className="shadow-md hover:shadow-lg transition-shadow"
+              onClick={() => setViewMode("battle")}
             >
               <Sword className="h-4 w-4 mr-2" />
               Battle
             </Button>
-          )}
+            <Button
+              variant={viewMode === "assistant" ? "outline" : "ghost"}
+              size="sm"
+              onClick={() => setViewMode("assistant")}
+            >
+              <Bot className="h-4 w-4 mr-2" />
+              Ranker 0
+            </Button>
+          </div>
         </div>
 
-        <CardCollectionComponent onCardDeleted={loadStoredCards} />
-
-        {showBattle && <BattleInterface playerCards={generatedCards} onClose={() => setShowBattle(false)} />}
+        {viewMode === "battle" ? (
+          <BattleInterface playerCards={generatedCards} onClose={() => setViewMode("cards")} />
+        ) : viewMode === "assistant" ? (
+          <ChatInterface />
+        ) : (
+          <CardCollectionComponent onCardDeleted={loadStoredCards} />
+        )}
       </div>
     )
   }
@@ -248,10 +275,20 @@ export function NFTSelection() {
         <h3 className="font-playfair text-lg font-semibold text-foreground">Select Your NFT</h3>
         <div className="flex items-center gap-2">
           {generatedCards.length > 0 && (
-            <Button variant="outline" size="sm" onClick={() => setViewMode("cards")}>
-              <Collection className="h-4 w-4 mr-2" />
-              View Collection ({generatedCards.length})
-            </Button>
+            <>
+              <Button variant="outline" size="sm" onClick={() => setViewMode("cards")}>
+                <Collection className="h-4 w-4 mr-2" />
+                View Collection ({generatedCards.length})
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setViewMode("battle")}>
+                <Sword className="h-4 w-4 mr-2" />
+                Battle
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setViewMode("assistant")}>
+                <Bot className="h-4 w-4 mr-2" />
+                Ranker 0
+              </Button>
+            </>
           )}
           {selectedNFT && (
             <div className="flex items-center gap-2 text-sm text-primary">

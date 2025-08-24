@@ -5,7 +5,7 @@ import { useState } from "react"
 import type { PlayingCard } from "../lib/card-generation"
 import { mintCardOnChain, uploadCardMetadata } from "../lib/card-minting"
 import { Button } from "./ui/button"
-import { Coins, Loader2 } from "lucide-react"
+import { Loader2 } from "lucide-react"
 
 interface CardMintingProps {
   card: PlayingCard
@@ -61,7 +61,7 @@ export function CardMinting({
         className="bg-blue-600 hover:bg-blue-700 text-white"
         title={mintError || "Mint this card as an NFT on the blockchain"}
       >
-        {isMinting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Coins className="h-3 w-3" />}
+        {isMinting ? <Loader2 className="h-3 w-3 animate-spin" /> : "Mint"}
       </Button>
     )
   }
@@ -75,10 +75,7 @@ export function CardMinting({
             Minting...
           </>
         ) : (
-          <>
-            <Coins className="h-4 w-4" />
-            Mint Card On-Chain
-          </>
+          "Mint Card On-Chain"
         )}
       </Button>
 

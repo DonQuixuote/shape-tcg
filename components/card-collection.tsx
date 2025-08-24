@@ -4,12 +4,14 @@ import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
 import { useWeb3 } from "@/contexts/web3-context"
 import { getCardsByOwner, deleteCard } from "@/lib/card-storage"
+import { getDecksByOwner, createDeck, setActiveDeck, deleteDeck, getActiveDeck, type Deck } from "@/lib/deck-storage"
 import type { PlayingCard } from "@/lib/card-generation"
 import { PlayingCardComponent } from "@/components/playing-card"
 import { CardMinting } from "@/components/card-minting"
-import { Trash2, Filter, Grid, List, X, Coins, Eye, Send } from "lucide-react"
+import { Trash2, Filter, Grid, List, X, Coins, Eye, Send, Plus, Star, Users } from "lucide-react"
 
 interface CardCollectionProps {
   onCardSelect?: (card: PlayingCard) => void
@@ -95,25 +97,86 @@ function CardBack({
 export function CardCollection({ onCardSelect, selectedCard, onCardDeleted }: CardCollectionProps) {
   const { account, isConnected } = useWeb3()
   const [cards, setCards] = useState<PlayingCard[]>([])
+  const [decks, setDecks] = useState<Deck[]>([])
+  const [activeDeck, setActiveDeckState] = useState<Deck | null>(null)
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
+  const [currentView, setCurrentView] = useState<"cards" | "decks">("cards")
   const [filterRarity, setFilterRarity] = useState<string>("all")
   const [filterGrade, setFilterGrade] = useState<string>("all")
   const [inspectingCard, setInspectingCard] = useState<PlayingCard | null>(null)
   const [mintedCards, setMintedCards] = useState<Set<string>>(new Set())
   const [selectedCards, setSelectedCards] = useState<Set<string>>(new Set())
+  const [showCreateDeck, setShowCreateDeck] = useState(false)
+  const [newDeckName, setNewDeckName] = useState("")
 
   useEffect(() => {
     if (isConnected && account) {
       loadUserCards()
+      loadUserDecks()
     } else {
       setCards([])
+      setDecks([])
+      setActiveDeckState(null)
     }
   }, [isConnected, account])
+
+  useEffect(() => {
+    const handleCardCollectionUpdate = () => {
+      console.log("[v0] Card collection update event received, refreshing cards...")
+      loadUserCards()
+    }
+
+    window.addEventListener("cardCollectionUpdated", handleCardCollectionUpdate)
+
+    return () => {
+      window.removeEventListener("cardCollectionUpdated", handleCardCollectionUpdate)
+    }
+  }, [account])
 
   const loadUserCards = () => {
     if (!account) return
     const userCards = getCardsByOwner(account)
+    console.log(`[v0] Loaded ${userCards.length} cards for user ${account}`)
+    console.log(
+      "[v0] Card details:",
+      userCards.map((card) => ({ id: card.id, name: card.nftName, source: card.source || "NFT" })),
+    )
     setCards(userCards)
+  }
+
+  const loadUserDecks = () => {
+    if (!account) return
+    const userDecks = getDecksByOwner(account)
+    const activeUserDeck = getActiveDeck(account)
+    setDecks(userDecks)
+    setActiveDeckState(activeUserDeck)
+  }
+
+  const handleCreateDeck = () => {
+    if (!account || !newDeckName.trim() || selectedCards.size === 0) return
+
+    const selectedCardObjects = cards.filter((card) => selectedCards.has(card.id))
+    if (selectedCardObjects.length > 3) {
+      alert("A deck can only contain 3 cards maximum")
+      return
+    }
+
+    createDeck(newDeckName.trim(), selectedCardObjects, account)
+    setNewDeckName("")
+    setSelectedCards(new Set())
+    setShowCreateDeck(false)
+    loadUserDecks()
+  }
+
+  const handleSetActiveDeck = (deckId: string) => {
+    if (!account) return
+    setActiveDeck(deckId, account)
+    loadUserDecks()
+  }
+
+  const handleDeleteDeck = (deckId: string) => {
+    deleteDeck(deckId)
+    loadUserDecks()
   }
 
   const handleDeleteCard = (cardId: string) => {
@@ -159,8 +222,7 @@ export function CardCollection({ onCardSelect, selectedCard, onCardDeleted }: Ca
     return true
   })
 
-  const rarities = ["common", "uncommon", "rare", "epic", "legendary"]
-  const grades = ["S-Rank", "A-Rank", "B-Rank", "C-Rank", "D-Rank", "Ungraded"]
+  console.log(`[v0] Total cards: ${cards.length}, Filtered cards: ${filteredCards.length}`)
 
   if (!isConnected) {
     return (
@@ -172,6 +234,7 @@ export function CardCollection({ onCardSelect, selectedCard, onCardDeleted }: Ca
   }
 
   if (cards.length === 0) {
+    console.log("[v0] No cards to display - cards array is empty")
     return (
       <div className="text-center py-12">
         <div className="text-gray-400 text-lg mb-2">No Cards Yet</div>
@@ -184,246 +247,392 @@ export function CardCollection({ onCardSelect, selectedCard, onCardDeleted }: Ca
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Header with view toggle */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-foreground font-playfair">Your Card Collection</h2>
+          <div className="flex items-center gap-4 mb-2">
+            <Button
+              variant={currentView === "cards" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setCurrentView("cards")}
+            >
+              <Grid className="h-4 w-4 mr-2" />
+              Cards ({cards.length})
+            </Button>
+            <Button
+              variant={currentView === "decks" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setCurrentView("decks")}
+            >
+              <Users className="h-4 w-4 mr-2" />
+              Decks ({decks.length})
+            </Button>
+          </div>
+          <h2 className="text-2xl font-bold text-foreground font-playfair">
+            {currentView === "cards" ? "Your Card Collection" : "Your Decks"}
+          </h2>
           <p className="text-muted-foreground text-sm">
-            {filteredCards.length} of {cards.length} cards
-            {mintedCards.size > 0 && ` • ${mintedCards.size} minted on-chain`}
-            {selectedCards.size > 0 && ` • ${selectedCards.size} selected`}
+            {currentView === "cards" ? (
+              <>
+                {filteredCards.length} of {cards.length} cards
+                {mintedCards.size > 0 && ` • ${mintedCards.size} minted on-chain`}
+                {selectedCards.size > 0 && ` • ${selectedCards.size} selected`}
+              </>
+            ) : (
+              <>
+                {decks.length} deck(s) created
+                {activeDeck && ` • "${activeDeck.name}" is active`}
+              </>
+            )}
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button variant={viewMode === "grid" ? "default" : "outline"} size="sm" onClick={() => setViewMode("grid")}>
-            <Grid className="h-4 w-4" />
-          </Button>
-          <Button variant={viewMode === "list" ? "default" : "outline"} size="sm" onClick={() => setViewMode("list")}>
-            <List className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-
-      {/* Action buttons for selected cards */}
-      {selectedCards.size > 0 && (
-        <div className="flex items-center gap-4 p-4 bg-muted rounded-lg">
-          <span className="text-sm font-medium">{selectedCards.size} card(s) selected</span>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                const selectedCard = cards.find((card) => selectedCards.has(card.id))
-                if (selectedCard) handleCardInspect(selectedCard)
-              }}
-              disabled={selectedCards.size !== 1}
-            >
-              <Eye className="h-4 w-4 mr-1" />
-              Inspect
+        {currentView === "cards" && (
+          <div className="flex items-center gap-2">
+            <Button variant={viewMode === "grid" ? "default" : "outline"} size="sm" onClick={() => setViewMode("grid")}>
+              <Grid className="h-4 w-4" />
             </Button>
-            <div className="flex gap-1">
-              {Array.from(selectedCards).map((cardId) => {
-                const card = cards.find((c) => c.id === cardId)
-                if (!card || mintedCards.has(cardId)) return null
-                return (
-                  <CardMinting
-                    key={cardId}
-                    card={card}
-                    originalNFTContract={card.nftContractAddress}
-                    originalTokenId={card.nftTokenId}
-                    onMintSuccess={(tokenId) => handleMintSuccess(cardId, tokenId)}
-                    compact={true}
-                    buttonText="Mint"
-                  />
-                )
-              })}
-            </div>
-            <Button variant="outline" size="sm" disabled={selectedCards.size !== 1}>
-              <Send className="h-4 w-4 mr-1" />
-              Transfer
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => setSelectedCards(new Set())}>
-              Clear Selection
+            <Button variant={viewMode === "list" ? "default" : "outline"} size="sm" onClick={() => setViewMode("list")}>
+              <List className="h-4 w-4" />
             </Button>
           </div>
-        </div>
-      )}
-
-      {/* Filters */}
-      <div className="flex flex-wrap gap-4 items-center">
-        <div className="flex items-center gap-2">
-          <Filter className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm text-muted-foreground">Filters:</span>
-        </div>
-
-        <select
-          value={filterRarity}
-          onChange={(e) => setFilterRarity(e.target.value)}
-          className="px-3 py-1 rounded border border-border bg-background text-sm"
-        >
-          <option value="all">All Rarities</option>
-          {rarities.map((rarity) => (
-            <option key={rarity} value={rarity}>
-              {rarity.charAt(0).toUpperCase() + rarity.slice(1)}
-            </option>
-          ))}
-        </select>
-
-        <select
-          value={filterGrade}
-          onChange={(e) => setFilterGrade(e.target.value)}
-          className="px-3 py-1 rounded border border-border bg-background text-sm"
-        >
-          <option value="all">All Grades</option>
-          {grades.map((grade) => (
-            <option key={grade} value={grade}>
-              {grade}
-            </option>
-          ))}
-        </select>
-
-        {(filterRarity !== "all" || filterGrade !== "all") && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setFilterRarity("all")
-              setFilterGrade("all")
-            }}
-          >
-            Clear Filters
-          </Button>
         )}
       </div>
 
-      {/* Cards Display */}
-      {viewMode === "grid" ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {filteredCards.map((card) => (
-            <div key={card.id} className="relative group">
-              <PlayingCardComponent
-                card={card}
-                isSelected={selectedCards.has(card.id)}
-                onClick={() => handleCardSelect(card.id)}
-                className="scale-90 hover:scale-95 transition-transform cursor-pointer"
-              />
-              {mintedCards.has(card.id) && (
-                <div className="absolute top-2 left-2">
-                  <Badge variant="secondary" className="bg-green-600 text-white">
-                    <Coins className="h-3 w-3 mr-1" />
-                    Minted
-                  </Badge>
+      {/* Deck View */}
+      {currentView === "decks" && (
+        <div className="space-y-4">
+          {/* Create Deck Section */}
+          <Card className="p-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Create New Deck</h3>
+              <Button variant="outline" size="sm" onClick={() => setCurrentView("cards")}>
+                Select Cards
+              </Button>
+            </div>
+
+            {showCreateDeck ? (
+              <div className="space-y-4">
+                <Input
+                  placeholder="Enter deck name..."
+                  value={newDeckName}
+                  onChange={(e) => setNewDeckName(e.target.value)}
+                />
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={handleCreateDeck}
+                    disabled={!newDeckName.trim() || selectedCards.size === 0 || selectedCards.size > 3}
+                  >
+                    Create Deck ({selectedCards.size}/3 cards)
+                  </Button>
+                  <Button variant="outline" onClick={() => setShowCreateDeck(false)}>
+                    Cancel
+                  </Button>
                 </div>
-              )}
-              <div className="absolute top-2 right-2 flex gap-1">
+                {selectedCards.size > 3 && <p className="text-sm text-red-500">Maximum 3 cards per deck</p>}
+              </div>
+            ) : (
+              <Button onClick={() => setShowCreateDeck(true)} disabled={selectedCards.size === 0}>
+                <Plus className="h-4 w-4 mr-2" />
+                New Deck {selectedCards.size > 0 && `(${selectedCards.size} cards selected)`}
+              </Button>
+            )}
+          </Card>
+
+          {/* Deck List */}
+          <div className="grid gap-4">
+            {decks.map((deck) => (
+              <Card key={deck.id} className="p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-semibold">{deck.name}</h3>
+                    {deck.isActive && (
+                      <Badge variant="default" className="bg-green-600">
+                        <Star className="h-3 w-3 mr-1" />
+                        Active
+                      </Badge>
+                    )}
+                    <Badge variant="outline">{deck.cards.length}/3 cards</Badge>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {!deck.isActive && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleSetActiveDeck(deck.id)}
+                        disabled={deck.cards.length === 0}
+                      >
+                        Set Active
+                      </Button>
+                    )}
+                    <Button variant="destructive" size="sm" onClick={() => handleDeleteDeck(deck.id)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Deck Cards Preview */}
+                <div className="flex gap-2 overflow-x-auto">
+                  {deck.cards.map((card) => (
+                    <div key={card.id} className="flex-shrink-0">
+                      <PlayingCardComponent card={card} className="w-16 h-20 scale-75" />
+                    </div>
+                  ))}
+                  {Array.from({ length: 3 - deck.cards.length }).map((_, index) => (
+                    <div
+                      key={`empty-${index}`}
+                      className="w-16 h-20 scale-75 border-2 border-dashed border-gray-300 rounded flex items-center justify-center flex-shrink-0"
+                    >
+                      <Plus className="h-4 w-4 text-gray-400" />
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            ))}
+          </div>
+
+          {decks.length === 0 && (
+            <div className="text-center py-8">
+              <div className="text-gray-400 text-lg mb-2">No Decks Created</div>
+              <div className="text-gray-500 text-sm">Create your first deck to start battling</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Cards View */}
+      {currentView === "cards" && (
+        <>
+          {/* Action buttons for selected cards */}
+          {selectedCards.size > 0 && (
+            <div className="flex items-center gap-4 p-4 bg-muted rounded-lg">
+              <span className="text-sm font-medium">{selectedCards.size} card(s) selected</span>
+              <div className="flex gap-2">
                 <Button
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
-                  className="opacity-0 group-hover:opacity-100 transition-opacity"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleCardInspect(card)
-                  }}
+                  onClick={() => setShowCreateDeck(true)}
+                  disabled={selectedCards.size > 3}
                 >
-                  <Eye className="h-3 w-3" />
+                  <Plus className="h-4 w-4 mr-1" />
+                  Create Deck
                 </Button>
                 <Button
-                  variant="destructive"
+                  variant="outline"
                   size="sm"
-                  className="opacity-0 group-hover:opacity-100 transition-opacity"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleDeleteCard(card.id)
+                  onClick={() => {
+                    const selectedCard = cards.find((card) => selectedCards.has(card.id))
+                    if (selectedCard) handleCardInspect(selectedCard)
                   }}
+                  disabled={selectedCards.size !== 1}
                 >
-                  <Trash2 className="h-3 w-3" />
+                  <Eye className="h-4 w-4 mr-1" />
+                  Inspect
+                </Button>
+                <div className="flex gap-1">
+                  {Array.from(selectedCards).map((cardId) => {
+                    const card = cards.find((c) => c.id === cardId)
+                    if (!card || mintedCards.has(cardId)) return null
+                    return (
+                      <CardMinting
+                        key={cardId}
+                        card={card}
+                        originalNFTContract={card.nftContractAddress}
+                        originalTokenId={card.nftTokenId}
+                        onMintSuccess={(tokenId) => handleMintSuccess(cardId, tokenId)}
+                        compact={true}
+                        buttonText="Mint"
+                      />
+                    )
+                  })}
+                </div>
+                <Button variant="outline" size="sm" disabled={selectedCards.size !== 1}>
+                  <Send className="h-4 w-4 mr-1" />
+                  Transfer
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setSelectedCards(new Set())}>
+                  Clear Selection
                 </Button>
               </div>
             </div>
-          ))}
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {filteredCards.map((card) => (
-            <Card
-              key={card.id}
-              className={`p-4 cursor-pointer transition-all hover:shadow-md ${
-                selectedCards.has(card.id) ? "ring-2 ring-primary" : ""
-              }`}
-              onClick={() => handleCardSelect(card.id)}
+          )}
+
+          {/* Filters */}
+          <div className="flex flex-wrap gap-4 items-center">
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">Filters:</span>
+            </div>
+
+            <select
+              value={filterRarity}
+              onChange={(e) => setFilterRarity(e.target.value)}
+              className="px-3 py-1 rounded border border-border bg-background text-sm"
             >
-              <div className="flex items-center gap-4">
-                <div className="w-16 h-20 relative rounded overflow-hidden flex-shrink-0">
-                  <img
-                    src={card.nftImage || "/placeholder.svg"}
-                    alt={card.nftName}
-                    className="w-full h-full object-cover"
+              <option value="all">All Rarities</option>
+              {["common", "uncommon", "rare", "epic", "legendary"].map((rarity) => (
+                <option key={rarity} value={rarity}>
+                  {rarity.charAt(0).toUpperCase() + rarity.slice(1)}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={filterGrade}
+              onChange={(e) => setFilterGrade(e.target.value)}
+              className="px-3 py-1 rounded border border-border bg-background text-sm"
+            >
+              <option value="all">All Grades</option>
+              {["S-Rank", "A-Rank", "B-Rank", "C-Rank", "D-Rank", "Ungraded"].map((grade) => (
+                <option key={grade} value={grade}>
+                  {grade}
+                </option>
+              ))}
+            </select>
+
+            {(filterRarity !== "all" || filterGrade !== "all") && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setFilterRarity("all")
+                  setFilterGrade("all")
+                }}
+              >
+                Clear Filters
+              </Button>
+            )}
+          </div>
+
+          {/* Cards Display */}
+          {viewMode === "grid" ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {filteredCards.map((card) => (
+                <div key={card.id} className="relative group">
+                  <PlayingCardComponent
+                    card={card}
+                    isSelected={selectedCards.has(card.id)}
+                    onClick={() => handleCardSelect(card.id)}
+                    className="scale-90 hover:scale-95 transition-transform cursor-pointer"
                   />
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-foreground truncate">{card.nftName}</h3>
-                  <p className="text-sm text-muted-foreground">#{card.nftTokenId}</p>
-
-                  <div className="flex items-center gap-2 mt-2">
-                    <Badge variant="secondary">{card.grade}</Badge>
-                    <Badge variant="outline">
-                      {card.processedImage?.backgroundRarity
-                        ? card.processedImage.backgroundRarity.charAt(0).toUpperCase() +
-                          card.processedImage.backgroundRarity.slice(1)
-                        : "Unknown"}
-                    </Badge>
-                    {mintedCards.has(card.id) && (
+                  {mintedCards.has(card.id) && (
+                    <div className="absolute top-2 left-2">
                       <Badge variant="secondary" className="bg-green-600 text-white">
                         <Coins className="h-3 w-3 mr-1" />
                         Minted
                       </Badge>
-                    )}
+                    </div>
+                  )}
+                  <div className="absolute top-2 right-2 flex gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleCardInspect(card)
+                      }}
+                    >
+                      <Eye className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleDeleteCard(card.id)
+                      }}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
                   </div>
                 </div>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {filteredCards.map((card) => (
+                <Card
+                  key={card.id}
+                  className={`p-4 cursor-pointer transition-all hover:shadow-md ${
+                    selectedCards.has(card.id) ? "ring-2 ring-primary" : ""
+                  }`}
+                  onClick={() => handleCardSelect(card.id)}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-20 relative rounded overflow-hidden flex-shrink-0">
+                      <img
+                        src={card.nftImage || "/placeholder.svg"}
+                        alt={card.nftName}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
 
-                <div className="flex items-center gap-2 text-sm">
-                  <div className="text-center">
-                    <div className="text-red-500 font-bold">{card.power}</div>
-                    <div className="text-xs text-muted-foreground">PWR</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-green-500 font-bold">{card.health}</div>
-                    <div className="text-xs text-muted-foreground">HP</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-blue-500 font-bold">{card.defense}</div>
-                    <div className="text-xs text-muted-foreground">DEF</div>
-                  </div>
-                </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-foreground truncate">{card.nftName}</h3>
+                      <p className="text-sm text-muted-foreground">#{card.nftTokenId}</p>
 
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleCardInspect(card)
-                    }}
-                  >
-                    <Eye className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleDeleteCard(card.id)
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          ))}
-        </div>
+                      <div className="flex items-center gap-2 mt-2">
+                        <Badge variant="secondary">{card.grade}</Badge>
+                        <Badge variant="outline">
+                          {card.processedImage?.backgroundRarity
+                            ? card.processedImage.backgroundRarity.charAt(0).toUpperCase() +
+                              card.processedImage.backgroundRarity.slice(1)
+                            : "Unknown"}
+                        </Badge>
+                        {mintedCards.has(card.id) && (
+                          <Badge variant="secondary" className="bg-green-600 text-white">
+                            <Coins className="h-3 w-3 mr-1" />
+                            Minted
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-sm">
+                      <div className="text-center">
+                        <div className="text-red-500 font-bold">{card.power}</div>
+                        <div className="text-xs text-muted-foreground">PWR</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-green-500 font-bold">{card.health}</div>
+                        <div className="text-xs text-muted-foreground">HP</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-blue-500 font-bold">{card.defense}</div>
+                        <div className="text-xs text-muted-foreground">DEF</div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleCardInspect(card)
+                        }}
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleDeleteCard(card.id)
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {inspectingCard && <CardBack card={inspectingCard} onClose={() => setInspectingCard(null)} />}

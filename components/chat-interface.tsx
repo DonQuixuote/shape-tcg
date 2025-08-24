@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -11,6 +11,7 @@ import { Send, Bot, User } from "lucide-react"
 import { useWeb3 } from "@/contexts/web3-context"
 import { getUserInfoByAddress } from "@/lib/leaderboard"
 import { getGradeByRank } from "@/lib/grade-system"
+import { saveCard, getStoredCards } from "@/lib/card-storage"
 
 interface Message {
   id: string
@@ -29,6 +30,7 @@ interface MedalData {
 
 export function ChatInterface() {
   const { account, isConnected } = useWeb3()
+  const scrollAreaRef = useRef<HTMLDivElement>(null)
   const [username, setUsername] = useState<string | null>(null)
   const [stackRank, setStackRank] = useState<number | null>(null)
   const [grade, setGrade] = useState<string>("Ungraded")
@@ -102,6 +104,15 @@ export function ChatInterface() {
     initializeChat()
   }, [isConnected, account])
 
+  useEffect(() => {
+    if (scrollAreaRef.current) {
+      const scrollContainer = scrollAreaRef.current.querySelector("[data-radix-scroll-area-viewport]")
+      if (scrollContainer) {
+        scrollContainer.scrollTop = scrollContainer.scrollHeight
+      }
+    }
+  }, [messages])
+
   const handleSendMessage = async () => {
     if (!inputValue.trim()) return
 
@@ -132,6 +143,10 @@ export function ChatInterface() {
             grade: grade,
             isConnected: isConnected,
             medals: medals,
+            cards: account
+              ? getStoredCards().filter((card) => card.ownerAddress.toLowerCase() === account.toLowerCase())
+              : [],
+            walletAddress: account,
           },
         }),
       })
@@ -141,6 +156,13 @@ export function ChatInterface() {
       }
 
       const data = await response.json()
+
+      if (data.generatedCard && account) {
+        console.log("[v0] Saving AI-generated card to collection:", data.generatedCard.nftName)
+        saveCard(data.generatedCard)
+
+        window.dispatchEvent(new CustomEvent("cardCollectionUpdated"))
+      }
 
       const aiResponse: Message = {
         id: (Date.now() + 1).toString(),
@@ -172,8 +194,8 @@ export function ChatInterface() {
   }
 
   return (
-    <Card className="h-full flex flex-col bg-card border-border/50">
-      <CardHeader className="pb-4">
+    <Card className="h-[600px] flex flex-col bg-card border-border/50">
+      <CardHeader className="pb-4 flex-shrink-0">
         <CardTitle className="flex items-center gap-2 font-playfair text-lg">
           <Bot className="h-5 w-5 text-primary" />
           Ranker 0
@@ -187,8 +209,8 @@ export function ChatInterface() {
         </CardTitle>
       </CardHeader>
 
-      <CardContent className="flex-1 flex flex-col p-0">
-        <ScrollArea className="flex-1 px-6">
+      <CardContent className="flex-1 flex flex-col p-0 min-h-0">
+        <ScrollArea ref={scrollAreaRef} className="flex-1 px-6 h-full overflow-hidden">
           <div className="space-y-4 pb-4">
             {messages.map((message) => (
               <div
@@ -246,7 +268,7 @@ export function ChatInterface() {
           </div>
         </ScrollArea>
 
-        <div className="border-t border-border/50 p-4">
+        <div className="border-t border-border/50 p-4 flex-shrink-0">
           <div className="flex gap-2">
             <Input
               value={inputValue}
