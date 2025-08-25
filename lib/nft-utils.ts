@@ -38,6 +38,10 @@ async function supportsEnumeration(contract: Contract): Promise<boolean> {
   }
 }
 
+async function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 async function fetchNFTsWithoutEnumeration(
   contract: Contract,
   walletAddress: string,
@@ -56,7 +60,7 @@ async function fetchNFTsWithoutEnumeration(
     }
 
     // Use a more comprehensive scanning approach
-    const batchSize = 50
+    const batchSize = 20 // Reduced from 50 to 20
     const maxBatches = Math.ceil(maxTokenId / batchSize)
     const targetBalance = await contract.balanceOf(walletAddress)
     const targetBalanceNumber = Number(targetBalance.toString())
@@ -83,6 +87,7 @@ async function fetchNFTsWithoutEnumeration(
         if (result && result.owner === walletAddress.toLowerCase()) {
           try {
             const tokenURI = await contract.tokenURI(result.tokenId)
+            await delay(100)
             const metadata = await fetchMetadata(tokenURI)
 
             nfts.push({
@@ -95,7 +100,7 @@ async function fetchNFTsWithoutEnumeration(
 
             console.log(`[v0] Found NFT via scanning: ${metadata.name} (Token ID: ${result.tokenId})`)
           } catch (metadataError) {
-            console.error(`[v0] Error fetching metadata for token ${result.tokenId}:`, metadataError)
+            // Skip logging metadata errors to reduce console spam
           }
         }
       }
@@ -105,9 +110,8 @@ async function fetchNFTsWithoutEnumeration(
         console.log(`[v0] Scanned ${endId} tokens, found ${nfts.length}/${targetBalanceNumber} NFTs`)
       }
 
-      // Small delay between batches to avoid rate limiting
       if (batch < maxBatches - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 50))
+        await delay(200) // Increased from 50ms to 200ms
       }
 
       // Early exit if we found all expected NFTs
@@ -121,7 +125,7 @@ async function fetchNFTsWithoutEnumeration(
       console.log(`[v0] Warning: Only found ${nfts.length} out of ${targetBalanceNumber} expected NFTs`)
     }
   } catch (error) {
-    console.error(`[v0] Error in non-enumerable NFT fetching:`, error)
+    // Skip logging scanning errors to reduce console spam
   }
 
   return nfts
@@ -154,7 +158,6 @@ async function fetchMetadata(tokenURI: string): Promise<{ name: string; image: s
       description: metadata.description,
     }
   } catch (error) {
-    console.error("Error fetching metadata:", error)
     return {
       name: "Unknown NFT",
       image: `/placeholder.svg?height=200&width=200&query=nft+placeholder`,
@@ -165,7 +168,6 @@ async function fetchMetadata(tokenURI: string): Promise<{ name: string; image: s
 
 export async function fetchUserNFTs(walletAddress: string): Promise<NFT[]> {
   if (typeof window === "undefined") {
-    console.log("[v0] Skipping NFT fetching on server side")
     return []
   }
 
@@ -205,6 +207,7 @@ export async function fetchUserNFTs(walletAddress: string): Promise<NFT[]> {
               const tokenURI = await contract.tokenURI(tokenId)
               console.log(`[v0] Fetching metadata for token ${tokenIdString} from URI: ${tokenURI}`)
 
+              await delay(150)
               // Fetch and parse metadata
               const metadata = await fetchMetadata(tokenURI)
 
@@ -219,7 +222,7 @@ export async function fetchUserNFTs(walletAddress: string): Promise<NFT[]> {
               allNFTs.push(nft)
               console.log(`[v0] Successfully fetched NFT: ${metadata.name}`)
             } catch (tokenError) {
-              console.error(`[v0] Error fetching token at index ${i}:`, tokenError)
+              // Skip logging token errors to reduce console spam
             }
           }
         } else {
@@ -228,15 +231,16 @@ export async function fetchUserNFTs(walletAddress: string): Promise<NFT[]> {
           const nfts = await fetchNFTsWithoutEnumeration(contract, walletAddress, contractAddress)
           allNFTs.push(...nfts)
         }
+
+        await delay(300)
       } catch (contractError) {
-        console.error(`[v0] Error fetching NFTs from contract ${contractAddress}:`, contractError)
+        // Skip logging contract errors to reduce console spam
       }
     }
 
     console.log(`[v0] Total NFTs fetched: ${allNFTs.length}`)
     return allNFTs
   } catch (error) {
-    console.error("[v0] Error fetching user NFTs:", error)
     return []
   }
 }
