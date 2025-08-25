@@ -50,82 +50,119 @@ async function fetchNFTsWithoutEnumeration(
   const nfts: NFT[] = []
 
   try {
-    // Try to get total supply to determine range to scan
-    let maxTokenId = 50000 // Increased default fallback
-    try {
-      const totalSupply = await contract.totalSupply()
-      maxTokenId = Math.min(Number(totalSupply.toString()), 50000)
-    } catch (e) {
-      console.log(`[v0] Could not get total supply for ${contractAddress}, using default range`)
-    }
-
-    // Use a more comprehensive scanning approach
-    const batchSize = 20 // Reduced from 50 to 20
-    const maxBatches = Math.ceil(maxTokenId / batchSize)
     const targetBalance = await contract.balanceOf(walletAddress)
     const targetBalanceNumber = Number(targetBalance.toString())
 
-    console.log(`[v0] Scanning for ${targetBalanceNumber} NFTs across ${maxTokenId} possible token IDs`)
+    if (targetBalanceNumber === 0) {
+      return nfts
+    }
 
-    for (let batch = 0; batch < maxBatches && nfts.length < targetBalanceNumber; batch++) {
-      const promises = []
-      const startId = batch * batchSize + 1
-      const endId = Math.min(startId + batchSize - 1, maxTokenId)
+    console.log(`[v0] Looking for ${targetBalanceNumber} NFTs using Transfer event logs`)
 
-      for (let tokenId = startId; tokenId <= endId; tokenId++) {
-        promises.push(
-          contract
-            .ownerOf(tokenId)
-            .then((owner) => ({ tokenId, owner: owner.toLowerCase() }))
-            .catch(() => null), // Token doesn't exist or error
-        )
+    const currentBlock = await provider.getBlockNumber()
+    const fromBlock = Math.max(0, currentBlock - 50000) // Reduced block range for better performance
+
+    try {
+      // Query Transfer events where 'to' is the wallet address
+      const transferFilter = {
+        address: contractAddress,
+        topics: [
+          "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef", // Transfer event signature
+          null, // from (any address)
+          "0x000000000000000000000000" + walletAddress.slice(2).toLowerCase(), // to (user's wallet)
+        ],
       }
 
-      const results = await Promise.all(promises)
+      const events = await provider.getLogs({
+        ...transferFilter,
+        fromBlock,
+        toBlock: currentBlock,
+      })
 
-      for (const result of results) {
-        if (result && result.owner === walletAddress.toLowerCase()) {
+      console.log(`[v0] Found ${events.length} Transfer events to analyze`)
+
+      const ownedTokenIds = new Set<string>()
+
+      // Process events to find currently owned tokens
+      for (const event of events) {
+        if (event.topics && event.topics.length >= 4) {
+          // Token ID is in the 4th topic (index 3) for Transfer events
+          const tokenIdHex = event.topics[3]
+          const tokenId = Number.parseInt(tokenIdHex, 16).toString()
+
+          // Verify the wallet still owns this token
           try {
-            const tokenURI = await contract.tokenURI(result.tokenId)
+            const currentOwner = await contract.ownerOf(tokenId)
+            if (currentOwner.toLowerCase() === walletAddress.toLowerCase()) {
+              ownedTokenIds.add(tokenId)
+              console.log(`[v0] Confirmed ownership of token ${tokenId}`)
+            }
+          } catch (e) {
+            // Token might not exist anymore, skip
+          }
+
+          if (ownedTokenIds.size >= targetBalanceNumber) {
+            break
+          }
+        }
+      }
+
+      console.log(`[v0] Found ${ownedTokenIds.size} owned tokens from events`)
+
+      // Fetch metadata for owned tokens
+      for (const tokenId of ownedTokenIds) {
+        try {
+          const tokenURI = await contract.tokenURI(tokenId)
+          await delay(100)
+          const metadata = await fetchMetadata(tokenURI)
+
+          nfts.push({
+            tokenId: tokenId,
+            name: metadata.name,
+            image: metadata.image,
+            contractAddress,
+            description: metadata.description,
+          })
+
+          console.log(`[v0] Found NFT via events: ${metadata.name} (Token ID: ${tokenId})`)
+        } catch (metadataError) {
+          console.log(`[v0] Failed to fetch metadata for token ${tokenId}`)
+        }
+      }
+    } catch (eventError) {
+      console.log(`[v0] Event query failed: ${eventError}, falling back to limited scanning`)
+
+      const maxScan = Math.min(1000, targetBalanceNumber * 100) // Much smaller scan range
+
+      for (let tokenId = 1; tokenId <= maxScan && nfts.length < targetBalanceNumber; tokenId++) {
+        try {
+          const owner = await contract.ownerOf(tokenId)
+          if (owner.toLowerCase() === walletAddress.toLowerCase()) {
+            const tokenURI = await contract.tokenURI(tokenId)
             await delay(100)
             const metadata = await fetchMetadata(tokenURI)
 
             nfts.push({
-              tokenId: result.tokenId.toString(),
+              tokenId: tokenId.toString(),
               name: metadata.name,
               image: metadata.image,
               contractAddress,
               description: metadata.description,
             })
 
-            console.log(`[v0] Found NFT via scanning: ${metadata.name} (Token ID: ${result.tokenId})`)
-          } catch (metadataError) {
-            // Skip logging metadata errors to reduce console spam
+            console.log(`[v0] Found NFT via scanning: ${metadata.name} (Token ID: ${tokenId})`)
           }
+        } catch (e) {
+          // Skip non-existent tokens
+        }
+
+        if (tokenId % 50 === 0) {
+          await delay(200) // Rate limiting
         }
       }
-
-      // Progress logging
-      if (batch % 20 === 0) {
-        console.log(`[v0] Scanned ${endId} tokens, found ${nfts.length}/${targetBalanceNumber} NFTs`)
-      }
-
-      if (batch < maxBatches - 1) {
-        await delay(200) // Increased from 50ms to 200ms
-      }
-
-      // Early exit if we found all expected NFTs
-      if (nfts.length >= targetBalanceNumber) {
-        console.log(`[v0] Found all ${targetBalanceNumber} expected NFTs, stopping scan`)
-        break
-      }
-    }
-
-    if (nfts.length < targetBalanceNumber) {
-      console.log(`[v0] Warning: Only found ${nfts.length} out of ${targetBalanceNumber} expected NFTs`)
     }
   } catch (error) {
-    // Skip logging scanning errors to reduce console spam
+    console.log(`[v0] Error in fetchNFTsWithoutEnumeration: ${error}`)
   }
 
   return nfts
