@@ -1,4 +1,5 @@
 # ShapeTCG
+Refer to game_rules.txt for instructions on Shape TCG
 
 *Automatically synced with your [v0.app](https://v0.app) deployments*
 
